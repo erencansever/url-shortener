@@ -32,14 +32,18 @@ LOG_GROUP  = "/url-shortener/app"
 LOG_STREAM = "flask-app"
 
 def _ensure_log_stream():
-    try:
-        logs_client.create_log_group(logGroupName=LOG_GROUP)
-    except logs_client.exceptions.ResourceAlreadyExistsException:
-        pass
-    try:
-        logs_client.create_log_stream(logGroupName=LOG_GROUP, logStreamName=LOG_STREAM)
-    except logs_client.exceptions.ResourceAlreadyExistsException:
-        pass
+    for _ in range(3):
+        try:
+            logs_client.create_log_group(logGroupName=LOG_GROUP)
+            break
+        except Exception:
+            break  # already exists or conflicting op — either way we can proceed
+    for _ in range(3):
+        try:
+            logs_client.create_log_stream(logGroupName=LOG_GROUP, logStreamName=LOG_STREAM)
+            break
+        except Exception:
+            break
 
 def cw_log(message: str):
     try:
