@@ -210,34 +210,56 @@ HTML_TEMPLATE = """
   h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
   .subtitle { color: #718096; margin-bottom: 32px; }
   .card { background: white; border-radius: 12px; padding: 24px;
-          box-shadow: 0 1px 3px rgba(0,0,0,.1); margin-bottom: 24px; max-width: 900px; margin-left: auto; margin-right: auto; }
+          box-shadow: 0 1px 3px rgba(0,0,0,.1); margin-bottom: 24px; max-width: 1000px; margin-left: auto; margin-right: auto; }
   .card h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 16px; color: #2d3748; }
   .row { display: flex; gap: 8px; }
   input[type=text] { flex: 1; padding: 10px 14px; border: 1px solid #e2e8f0;
                      border-radius: 8px; font-size: 15px; outline: none; }
   input[type=text]:focus { border-color: #4299e1; box-shadow: 0 0 0 3px rgba(66,153,225,.15); }
-  .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer;
-         font-size: 15px; font-weight: 500; transition: opacity .15s; }
+  .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer;
+         font-size: 14px; font-weight: 500; transition: opacity .15s; }
   .btn:hover { opacity: .85; }
-  .btn-blue  { background: #4299e1; color: white; }
-  .btn-green { background: #48bb78; color: white; }
+  .btn-blue   { background: #4299e1; color: white; }
+  .btn-green  { background: #48bb78; color: white; }
+  .btn-purple { background: #805ad5; color: white; font-size: 12px; padding: 4px 10px; }
   #result { margin-top: 14px; font-size: 15px; }
   #result a { color: #4299e1; font-weight: 500; }
   #export-msg { margin-top: 10px; font-size: 13px; color: #48bb78; }
   table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
   th { background: #ebf8ff; color: #2b6cb0; padding: 10px 12px; text-align: left;
        font-weight: 600; border-bottom: 2px solid #bee3f8; }
-  td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: #f7fafc; }
+  td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  tr:last-child > td { border-bottom: none; }
+  tr.main-row:hover > td { background: #f7fafc; }
   .badge { display: inline-block; background: #ebf8ff; color: #2b6cb0;
            border-radius: 999px; padding: 2px 10px; font-weight: 600; }
-  .url-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .url-cell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Click history panel */
+  .detail-row td { padding: 0; background: #f7fafc; }
+  .detail-inner { padding: 12px 16px 16px 32px; border-left: 3px solid #805ad5; }
+  .detail-inner h4 { font-size: 13px; color: #553c9a; margin-bottom: 10px; }
+  .detail-table { font-size: 12px; width: 100%; border-collapse: collapse; }
+  .detail-table th { background: #e9d8fd; color: #553c9a; padding: 6px 10px; font-size: 12px; }
+  .detail-table td { padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #4a5568; }
+  .detail-table tr:last-child td { border-bottom: none; }
+  .ua-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .no-clicks { color: #a0aec0; font-style: italic; font-size: 13px; }
+
+  /* Modal overlay */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45);
+                   z-index:100; align-items:center; justify-content:center; }
+  .modal-overlay.open { display:flex; }
+  .modal { background:white; border-radius:12px; padding:28px; max-width:680px; width:90%;
+           max-height:80vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+  .modal h3 { margin-bottom:16px; color:#2d3748; }
+  .modal-close { float:right; background:none; border:none; font-size:20px;
+                 cursor:pointer; color:#718096; margin-top:-4px; }
 </style>
 </head>
 <body>
 
-<div style="max-width:900px;margin:0 auto">
+<div style="max-width:1000px;margin:0 auto">
   <h1>URL Shortener</h1>
   <p class="subtitle">Shorten links, track clicks, export analytics.</p>
 
@@ -261,7 +283,13 @@ HTML_TEMPLATE = """
     <div id="export-msg"></div>
     <table>
       <thead>
-        <tr><th>Short URL</th><th>Original URL</th><th>Clicks</th><th>Last Clicked</th></tr>
+        <tr>
+          <th>Short URL</th>
+          <th>Original URL</th>
+          <th>Clicks</th>
+          <th>Last Clicked</th>
+          <th>History</th>
+        </tr>
       </thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -278,7 +306,7 @@ async function shorten() {
     body: JSON.stringify({url}),
   });
   const data = await res.json();
-  const el   = document.getElementById('result');
+  const el = document.getElementById('result');
   if (data.short_url) {
     el.innerHTML = `Short URL: <a href="${data.short_url}" target="_blank">${data.short_url}</a>`;
     loadAnalytics();
@@ -289,23 +317,77 @@ async function shorten() {
 }
 
 async function loadAnalytics() {
-  const res   = await fetch('/analytics');
-  const rows  = await res.json();
+  const res  = await fetch('/analytics');
+  const rows = await res.json();
   const tbody = document.getElementById('tbody');
   tbody.innerHTML = '';
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="color:#a0aec0;text-align:center;padding:20px">No URLs yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#a0aec0;text-align:center;padding:20px">No URLs yet.</td></tr>';
     return;
   }
   rows.forEach(row => {
     const tr = document.createElement('tr');
+    tr.className = 'main-row';
     tr.innerHTML = `
       <td><a href="/r/${row.short_code}" target="_blank">/r/${row.short_code}</a></td>
       <td class="url-cell" title="${row.original_url}">${row.original_url}</td>
       <td><span class="badge">${row.click_count || 0}</span></td>
-      <td style="color:#718096">${row.last_clicked || 'never'}</td>`;
+      <td style="color:#718096;font-size:13px">${row.last_clicked ? row.last_clicked.replace('T',' ').slice(0,19)+' UTC' : 'never'}</td>
+      <td><button class="btn btn-purple" onclick="toggleHistory('${row.short_code}', this)">Details</button></td>`;
     tbody.appendChild(tr);
+
+    // hidden detail row
+    const dr = document.createElement('tr');
+    dr.className = 'detail-row';
+    dr.id = 'detail-${row.short_code}';
+    dr.style.display = 'none';
+    dr.innerHTML = `<td colspan="5"><div class="detail-inner" id="detail-inner-${row.short_code}">Loading…</div></td>`;
+    // fix the id interpolation
+    dr.id = 'detail-' + row.short_code;
+    tbody.appendChild(dr);
   });
+}
+
+async function toggleHistory(code, btn) {
+  const row   = document.getElementById('detail-' + code);
+  const inner = document.getElementById('detail-inner-' + code);
+
+  if (row.style.display !== 'none') {
+    row.style.display = 'none';
+    btn.textContent = 'Details';
+    return;
+  }
+
+  row.style.display = '';
+  btn.textContent = 'Hide';
+  inner.textContent = 'Loading…';
+
+  const res  = await fetch('/analytics/' + code);
+  const data = await res.json();
+  const clicks = data.clicks || [];
+
+  if (!clicks.length) {
+    inner.innerHTML = '<h4>Click History</h4><p class="no-clicks">No clicks recorded yet.</p>';
+    return;
+  }
+
+  // sort newest first
+  clicks.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+  const rows = clicks.map((c, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${c.timestamp.replace('T',' ').slice(0,19)} UTC</td>
+      <td>${c.ip || '—'}</td>
+      <td class="ua-cell" title="${c.user_agent || ''}">${c.user_agent || '—'}</td>
+    </tr>`).join('');
+
+  inner.innerHTML = `
+    <h4>Click History (${clicks.length} click${clicks.length !== 1 ? 's' : ''})</h4>
+    <table class="detail-table">
+      <thead><tr><th>#</th><th>Timestamp</th><th>IP Address</th><th>Browser / User-Agent</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 async function exportReport() {
@@ -315,7 +397,7 @@ async function exportReport() {
   const res  = await fetch('/export', {method: 'POST'});
   const data = await res.json();
   document.getElementById('export-msg').textContent =
-    data.message ? `✓ ${data.message} → ${data.s3_key}` : data.error;
+    data.message ? '✓ ' + data.message + ' → ' + data.s3_key : data.error;
   btn.disabled = false;
   btn.textContent = 'Export to S3';
 }
